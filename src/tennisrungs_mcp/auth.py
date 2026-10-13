@@ -21,7 +21,8 @@ ACCOUNT = "local-user"
 class Keychain:
     """macOS Security.framework; secret bytes never enter command-line arguments."""
 
-    def __init__(self):
+    def __init__(self, *, service=SERVICE, account=ACCOUNT):
+        self.service, self.account = service, account
         if sys.platform != "darwin":
             raise AuthenticationRequired("macOS Keychain is unavailable on this platform")
         self.lib = ctypes.CDLL("/System/Library/Frameworks/Security.framework/Security")
@@ -34,7 +35,7 @@ class Keychain:
 
     def _find(self):
         length, data, item = ctypes.c_uint32(), ctypes.c_void_p(), ctypes.c_void_p()
-        service, account = SERVICE.encode(), ACCOUNT.encode()
+        service, account = self.service.encode(), self.account.encode()
         status = self.lib.SecKeychainFindGenericPassword(None, len(service), service, len(account), account, ctypes.byref(length), ctypes.byref(data), ctypes.byref(item))
         return status, length, data, item
 
@@ -61,7 +62,7 @@ class Keychain:
             if item.value:
                 self.cf.CFRelease(item)
         elif status == -25300:  # errSecItemNotFound
-            service, account = SERVICE.encode(), ACCOUNT.encode()
+            service, account = self.service.encode(), self.account.encode()
             result = self.lib.SecKeychainAddGenericPassword(None, len(service), service, len(account), account, len(secret), secret, None)
         else:
             raise AuthenticationRequired("Keychain access refused")

@@ -10,7 +10,8 @@ bearer token. Frontend write contracts are private and subject to change.
 - CLI/client parsing, transport, operation journal, guarded writes: offline tests.
 - MCP stdio initialization, tool discovery and safe account-auth error: protocol tests.
 - Authenticated HTTP login, dashboard reads and production writes: **not yet validated**.
-- No session credential has been transferred or stored during development.
+- iParcs anonymous sign-in bootstrap: live verified; credential POST and account readback: synthetic tests only.
+- No real account credential has been transferred or stored during development.
 - Autonomous proposal withdrawal: disabled, because acceptance may race with POST.
 
 This is a functioning implementation with explicit validation gaps, not a claim of
@@ -147,10 +148,50 @@ and coverage; availability is not a hold or booking. See
 [consumer evidence and boundaries](docs/iparcs-evidence.md).
 
 `iparcs.py` retains the adapter protocol and court-only link, which does not
-preserve date/time. Authenticated reads and protected writes remain unimplemented.
-The transport allowlist refuses login, drafts, carts, checkout and order commit.
+preserve date/time. The anonymous transport allowlist refuses login, drafts, carts,
+checkout and order commit. The separate opt-in login helper below permits only
+normal login and two authenticated identity reads; preparation and booking still
+have no authenticated runtime transport.
 No existing scheduling job is changed. A licensed official adapter may be added
 separately. Payment/browser checkout remains separate.
+
+## iParcs normal login: separately approved local command
+
+The source-derived helper performs one normal login with a fresh anonymous jar,
+then checks `/rest/common/logincheck` and `/rest/system/loginuser` using that same
+jar. A positive customer ID and matching account identifier are required. This
+flow passed synthetic tests; no real credential POST or authenticated readback
+has been run. See [bootstrap evidence and remaining limits](docs/iparcs-auth-bootstrap.md).
+
+After specific approval to transmit iParcs credentials, Ben runs this in Terminal
+and enters credentials directly at the non-echo prompt:
+
+```sh
+.venv/bin/tennisrungs iparcs login --approve-credential-transmission
+```
+
+That command keeps the new session in memory for the validation only. With
+**separate session-storage approval**, the exact command is:
+
+```sh
+.venv/bin/tennisrungs iparcs login --approve-credential-transmission --approve-session-storage
+```
+
+The optional item is macOS Keychain service `tennis-iparcs`, account
+`atlantadprca-consumer-session`. It contains only this new first-party cookie jar,
+CSRF value, cookie flags/expiry and tenant/identity metadata, never the password.
+The HTTP helper permits only the fixed Atlanta HTTPS tenant. This is a full
+account session, not a vendor-issued read-only credential. No protected
+preparation tool reads that item or becomes enabled by creating it.
+
+Bootstrap checks precede credential prompting. CAPTCHA, duplicate login (code
+12), unfamiliar scope/security fields, signing/waiver flows, redirects and
+unexpected CSRF rotation stop the flow. No retry or force logout exists. The
+first login's possible effect on Ava's session, authenticated response schema,
+rotation/expiry and Keychain ACL behavior remain live untested. No iParcs setup
+approval is inferred from TennisRungs approval. Computer Use cannot operate the
+blocked Terminal, and no connected secure 1Password injection route is available
+in the development executor.
 
 ## Offline workflow and preparation plans
 
@@ -180,7 +221,7 @@ remain hard-denied. A new payment-page-ready application is not established.
 ```
 
 CI runs offline tests and package builds; it receives no account secrets and does
-not contact TennisRungs. Fixtures are synthetic. Do not commit HTML from account
+not contact either vendor. Fixtures are synthetic. Do not commit HTML from account
 pages, HAR files, cookies, credentials, operational ledgers or real match fixtures.
 
 Vendor/ladder rules and terms still apply. This unofficial integration has no

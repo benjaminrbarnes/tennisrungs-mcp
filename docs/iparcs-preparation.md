@@ -2,8 +2,10 @@
 
 Imported source-derived preparation contracts and synthetic tests from a separate
 task. No authenticated iParcs transport or credential store is configured. No
-protected endpoint has been called by this integration. The only live-verified
-consumer operations remain anonymous facility search, details and availability.
+protected endpoint has been called by this integration. Live-verified consumer
+operations are anonymous facility search, details, availability and the separate
+normal sign-in bootstrap. No real credential POST or authenticated readback was
+performed.
 
 ```sh
 tennisrungs iparcs prepare-plan --input examples/iparcs-preparation.json
@@ -51,29 +53,23 @@ Candidate `/newcart/checkout` is shown only if a supplied snapshot claims existi
 checkout eligibility; final payment total and live browser verification remain
 false. On mismatch, stop rather than exporting a session or resubmitting.
 
-## Direct normal-login helper: exact remaining gaps
+## Direct normal-login helper
 
-`iparcs_auth_contract.py` contains an offline in-memory request builder and safe
-response classifier. Known source shape: POST `/rest/user/signin`, JSON
-`login_name`, `password`, `signin_source_app:"0"`; source HTTP helper uses
-`X-CSRF-Token`. Secret-bearing fields have no dataclass repr or tool output. A
-future local non-echo prompt helper refuses echoing/redirected input, but is not
-wired to a login command and has never been used with real credentials.
+The CLI login helper is implemented and tested with synthetic responses, separate
+from this preparation client. Anonymous bootstrap acquisition and source-specific
+security/duplicate-login classification are resolved. It permits exactly one
+normal credential POST, followed by same-session logincheck and loginuser reads.
+It requires a matching positive customer identity before optional, separately
+approved Keychain storage. It exposes no password or session values. See the
+[reviewed commands and remaining live gaps](iparcs-auth-bootstrap.md).
 
-The following prevent a truthful functioning login dispatcher today:
-
-- Exact fresh anonymous CSRF/bootstrap acquisition and its cookie binding.
-- Minimal sufficient tenant-bound session/routing cookie set and safe persistence.
-- Complete legal-waiver, redirect and duplicate-login response schemas.
-- Whether a new normal login could displace the existing agent's session.
-- Harmless authenticated logincheck/readback validation.
-- Separate iParcs credential-entry and Keychain storage approval.
-
-The classifier stops on CAPTCHA, failures/duplicate login, unfamiliar fields,
-waiver/redirect flows and unknown session scope. It never enables force logout,
-retry or storage—even when an offline response claims success. It is a contract
-helper, not a fake live-auth implementation. TennisRungs approval does not cover
-the proposed separate iParcs Keychain item.
+Real sign-in, authenticated schemas, post-auth cookie/CSRF rotation and expiry,
+Keychain ACL behavior, and the first login's possible effect on Ava's session are
+untested. No real credentials or session were stored. CAPTCHA, failures/duplicate
+login, unfamiliar fields, signing/waiver/redirect flows and unknown cookie scope
+stop it; it never retries or forces logout. TennisRungs approval does not cover
+iParcs credential transmission or its separate Keychain item. A successful login
+does not enable the preparation transport or authorize any application stage.
 
 Before any protected test, obtain a concrete target, permitted stages and exact
 user approval. A pattern/validation experiment must exclude proceed, reserve,

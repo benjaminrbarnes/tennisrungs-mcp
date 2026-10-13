@@ -34,7 +34,7 @@ def main(argv=None):
         sub.add_parser(name)
     for name, field in [("rankings", "ladder_id"), ("history", "team_id")]:
         sub.add_parser(name).add_argument(field, type=int)
-    ip = sub.add_parser("iparcs", help="Anonymous Atlanta court reads; no bookings or credentials")
+    ip = sub.add_parser("iparcs", help="Atlanta court reads, offline plans and separately approved normal login")
     ips = ip.add_subparsers(dest="ip_command", required=True)
     ips.add_parser("search").add_argument("keyword")
     ips.add_parser("detail").add_argument("resource_id", type=int)
@@ -50,6 +50,12 @@ def main(argv=None):
     for name in ["prepare-plan", "compare-cart"]:
         ips.add_parser(name).add_argument("--input", required=True, help="Local non-secret offline JSON")
     ips.add_parser("auth-plan", help="Known source login contract and gaps only; no prompts, login or storage")
+    ips.add_parser("bootstrap", help="Public sign-in bootstrap diagnostics; no credential input or storage")
+    iplogin = ips.add_parser("login", help="One normal account login with same-session identity readback; no booking")
+    iplogin.add_argument("--approve-credential-transmission", action="store_true", required=True,
+                         help="Approve one credential POST to Atlanta's fixed HTTPS tenant")
+    iplogin.add_argument("--approve-session-storage", action="store_true",
+                         help="Separately approve storing the verified new session in macOS Keychain")
     workflow = sub.add_parser("workflow", help="Offline planning only; no live adapters, jobs, texts or calendar changes")
     workflows = workflow.add_subparsers(dest="workflow_command", required=True)
     workflows.add_parser("plan").add_argument("--input", required=True)
@@ -91,6 +97,23 @@ def main(argv=None):
             print(json.dumps(result, indent=2))
             return 0
         if args.command == "iparcs":
+            if args.ip_command in ["bootstrap", "login"]:
+                from .iparcs_login_bootstrap import acquire_anonymous_bootstrap
+                session = acquire_anonymous_bootstrap()
+                if args.ip_command == "bootstrap":
+                    print(json.dumps(session.diagnostics(), indent=2))
+                    return 0
+                if session.context.first_attempt_requires_recaptcha:
+                    raise AuthenticationRequired("Normal frontend requires CAPTCHA; stop before credential input")
+                from .iparcs_login import login_and_optionally_store, SERVICE, ACCOUNT
+                store = Keychain(service=SERVICE, account=ACCOUNT).store if args.approve_session_storage else None
+                username, password = prompt_credentials("Atlanta iParcs")
+                result = login_and_optionally_store(username, password,
+                    approval_reference="explicit local --approve-credential-transmission",
+                    approve_storage=args.approve_session_storage, session=session, store=store)
+                password = None
+                print(json.dumps(result, indent=2))
+                return 0
             if args.ip_command == "auth-plan":
                 from .iparcs_auth_contract import auth_plan
                 print(json.dumps(auth_plan(), indent=2))

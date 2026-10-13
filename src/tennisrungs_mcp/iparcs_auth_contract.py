@@ -1,7 +1,7 @@
-"""Source-derived OFFLINE login helper; no network/Keychain implementation.
+"""Legacy offline builder and current login plan; never dispatches requests here.
 
-Normal login context and safe session issuance are not yet verified. Never turn
-this contract into a login dispatcher merely because a mock accepts its body.
+Use iparcs_login with its fresh bootstrap for separately approved normal login.
+Authenticated session issuance is not live verified.
 """
 from dataclasses import dataclass, field
 
@@ -27,7 +27,7 @@ def build_login_request(login_name, password, csrf_token, *, approval_reference)
 
 
 def prompt_local_credentials(*, approval_reference):
-    """Future local handoff helper; intentionally not wired to CLI/MCP login."""
+    """Local non-echo handoff; no MCP credential input."""
     if not approval_reference:
         raise BoundaryError("Separate iParcs credential entry approval required")
     from .cli import prompt_credentials
@@ -35,37 +35,26 @@ def prompt_local_credentials(*, approval_reference):
 
 
 def assess_login_response(http_status, raw):
-    """Return only a safe stop classification, never cookies, messages or redirect URLs."""
-    stop = {"authenticated_session_verified": False, "storage_allowed": False, "retry_allowed": False}
-    if http_status != 200:
-        return dict(stop, outcome="STOP_HTTP_OR_SECURITY_BOUNDARY")
-    if not isinstance(raw, dict) or not isinstance(raw.get("headers"), dict) or raw["headers"].get("response_code") != "0000":
-        return dict(stop, outcome="STOP_APPLICATION_OR_UNKNOWN_SCHEMA")
-    body = raw.get("body")
-    result = body.get("result") if isinstance(body, dict) else None
-    if not isinstance(result, dict):
-        return dict(stop, outcome="STOP_UNKNOWN_LOGIN_SCHEMA")
-    if result.get("need_verify_recaptcha") is not False:
-        return dict(stop, outcome="STOP_CAPTCHA_OR_UNKNOWN_SECURITY_FLOW")
-    known = {"success", "message", "error_type", "need_verify_recaptcha"}
-    if set(result) - known or set(body) - {"result"}:
-        return dict(stop, outcome="STOP_UNEXPECTED_WAIVER_REDIRECT_OR_FLOW")
-    if result.get("success") is not True or result.get("error_type") not in (None, "", 0):
-        # Includes duplicate-login errors. Never force logout or retry with flags.
-        return dict(stop, outcome="STOP_LOGIN_FAILURE_OR_DUPLICATE")
-    return dict(stop, outcome="LOGIN_RESPONSE_CLAIMS_SUCCESS_SESSION_SCOPE_UNVERIFIED")
+    """Source-specific classification; still no dispatch, retry or storage permission."""
+    from .iparcs_login_bootstrap import classify_login_response
+    return classify_login_response(http_status, raw)
 
 
 def auth_plan():
     return {
-        "mode": "offline_auth_contract", "live_execution_enabled": False,
+        "mode": "auth_plan_only", "live_execution_enabled": False,
         "normal_login_source_observed": True, "normal_login_live_verified": False,
-        "method": "POST", "url": BASE + "/rest/user/signin",
-        "body_field_names": ["login_name", "password", "signin_source_app"],
-        "normal_source_app": "0", "candidate_csrf_header": "X-CSRF-Token",
+        "method": "POST", "url": BASE + "/rest/user/signin?locale=en-US",
+        "body_field_names": ["login_name", "password", "signin_source_app", "locale", "ak_properties"],
+        "normal_source_app": "0", "confirmed_csrf_header": "X-CSRF-Token",
         "credential_entry": "local non-echo prompt only after separate approval; no tool/model secret output",
         "storage_proposal": {"service": "tennis-iparcs", "account": "atlantadprca-consumer-session", "values": "new session cookies, CSRF and tenant/expiry metadata; never password"},
-        "gaps": ["exact fresh anonymous CSRF/bootstrap acquisition contract", "smallest sufficient tenant-bound cookie/routing set", "legal waiver and redirect schema", "duplicate-login semantics and impact on existing Ava session", "authenticated logincheck/read-back validation", "separate iParcs storage approval"],
+        "anonymous_bootstrap_live_verified": True,
+        "bootstrap_flow": "GET /signin -> 302 /signin?locale=en-US -> 200 HTML window.__csrfToken; same in-memory jar",
+        "duplicate_login_error_type": 12,
+        "cookies_issued_before_login": True,
+        "gaps": ["first approved sign-in and authenticated readback", "post-auth cookie issuance/rotation and CSRF enforcement", "actual effect on existing Ava session", "separate iParcs credential/storage approval"],
         "hard_stops": ["CAPTCHA", "unexpected waiver", "duplicate login", "force logout", "unknown cookie scope", "denied tool/site action"],
-        "signin_dispatch_implemented": False, "keychain_configured": False,
+        "signin_dispatch_implemented": True, "signin_dispatch_live_verified": False,
+        "keychain_configured": False,
     }

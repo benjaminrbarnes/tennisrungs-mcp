@@ -37,4 +37,5 @@ def test_claimed_success_is_not_validated_cookie_scope():
 
 def test_auth_plan_does_not_construct_credentials_or_signin_runtime():
     p = auth_plan()
-    assert not p["signin_dispatch_implemented"] and not p["keychain_configured"] and not p["live_execution_enabled"]
+    assert p["signin_dispatch_implemented"] and not p["signin_dispatch_live_verified"]
+    assert not p["keychain_configured"] and not p["live_execution_enabled"]

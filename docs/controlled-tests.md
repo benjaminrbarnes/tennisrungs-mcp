@@ -28,5 +28,15 @@ No production write is authorized by a development test or fixture.
    offline first. If a live response is lost, read the account once and reconcile
    the journal. Do not intentionally issue a second POST to test duplicates.
 
+7. **iParcs authentication:** separately approve one normal credential POST to
+   `https://anc.apm.activecommunities.com/atlantadprca/rest/user/signin?locale=en-US`
+   and same-session GET logincheck/loginuser identity verification. Optional
+   persistence needs separate approval for Keychain service `tennis-iparcs`,
+   account `atlantadprca-consumer-session`, including replacement of that exact
+   existing item if present. Use the [reviewed local command](iparcs-auth-bootstrap.md).
+   No force login or retry; stop on CAPTCHA, duplicate sessions, signing/waiver,
+   redirects, unfamiliar scope or schema. First-attempt effects on Ava's existing
+   session are untested. No protected preparation stage is part of this test.
+
 Later test permissions must identify the concrete fixture and cleanup, rather
 than granting blanket write access. No iParcs checkout/payment is part of this plan.
