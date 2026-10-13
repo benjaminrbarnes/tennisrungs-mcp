@@ -1,0 +1,22 @@
+{
+  "intent": {
+    "key": "synthetic-date",
+    "start": "2030-01-05T09:30:00-05:00",
+    "end": "2030-01-05T11:30:00-05:00",
+    "venue": "synthetic-court",
+    "cap_cents": 1500,
+    "can_book": true,
+    "ladder_id": 101,
+    "season_team_id": 201,
+    "venue_id": 401,
+    "deadline_guard": "2030-01-02T08:30:00-05:00"
+  },
+  "observation": {
+    "fresh": true,
+    "complete": true,
+    "exact_match": true,
+    "match_state": "PROPOSED",
+    "proposal_id": "synthetic-proposal"
+  },
+  "now": "2030-01-01T09:00:00-05:00"
+}

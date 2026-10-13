@@ -152,6 +152,26 @@ The transport allowlist refuses login, drafts, carts, checkout and order commit.
 No existing scheduling job is changed. A licensed official adapter may be added
 separately. Payment/browser checkout remains separate.
 
+## Offline workflow and preparation plans
+
+```sh
+.venv/bin/tennisrungs workflow plan --input examples/workflow.json
+.venv/bin/tennisrungs iparcs prepare-plan --input examples/iparcs-preparation.json
+.venv/bin/tennisrungs iparcs auth-plan
+```
+
+These are deterministic local previews only. They do not schedule, send texts,
+change calendars, acquire credentials, create drafts or dispatch protected calls.
+`workflow reconcile` reads the configured existing journal without clearing it.
+Source/authority assertions are unverified, explicit deadline overrides are
+preserved, and autonomous withdrawal stays disabled.
+
+See [workflow boundaries](docs/workflow.md) and
+[offline pre-payment/auth contracts](docs/iparcs-preparation.md). Only anonymous
+iParcs reads have live HTTP validation. Selection, validation and draft changes
+have unknown/protected effects; reserve, checkout, waivers, deletion and payment
+remain hard-denied. A new payment-page-ready application is not established.
+
 ## Development
 
 ```sh

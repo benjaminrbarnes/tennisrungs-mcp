@@ -18,7 +18,7 @@ def test_stdio_initialize_tools_and_fail_closed_account_read():
                 await session.initialize()
                 tools = await session.list_tools()
                 names = {t.name for t in tools.tools}
-                assert names == {"list_current_ladders", "list_own_matches", "list_own_proposals", "list_open_proposals", "get_rankings", "get_player_history", "iparcs_search_facilities", "iparcs_resource_detail", "iparcs_daily_availability", "iparcs_check_slot"}
+                assert names == {"list_current_ladders", "list_own_matches", "list_own_proposals", "list_open_proposals", "get_rankings", "get_player_history", "iparcs_search_facilities", "iparcs_resource_detail", "iparcs_daily_availability", "iparcs_check_slot", "workflow_plan", "workflow_reconcile", "iparcs_preparation_plan", "iparcs_compare_cart_snapshots"}
                 result = await session.call_tool("list_own_matches", {})
                 assert "AuthenticationRequired" in result.content[0].text
     asyncio.run(run())

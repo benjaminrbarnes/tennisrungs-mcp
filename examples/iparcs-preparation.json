@@ -1,0 +1,12 @@
+{
+  "selection": {
+    "resource_id": 999,
+    "start": "2030-01-05T09:30:00-05:00",
+    "end": "2030-01-05T11:30:00-05:00",
+    "attendees": 2,
+    "event_type_id": 27,
+    "event_name": "Synthetic tennis example",
+    "max_total": "15.00"
+  },
+  "now": "2030-01-01T09:00:00-05:00"
+}

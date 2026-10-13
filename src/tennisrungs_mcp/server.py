@@ -6,15 +6,17 @@ from mcp.server.fastmcp import FastMCP
 from .models import IntegrationError, ProposalInput, ScoreInput
 from .runtime import runtime
 from .iparcs_reads import IParcsReads
+from .runtime import operation_journal_path
 
 
-def make_server(client):
+def make_server(client, state_dir=None):
     mcp = FastMCP("tennisrungs")
     iparcs = IParcsReads()
 
     def call(fn, *args, **kwargs):
         try:
-            return fn(*args, **kwargs).to_dict()
+            result = fn(*args, **kwargs)
+            return result.to_dict() if hasattr(result, "to_dict") else result
         except IntegrationError as e:
             return {"error": type(e).__name__, "message": str(e)}
         except (TypeError, ValueError):
@@ -70,6 +72,33 @@ def make_server(client):
         """Check whole-block containment in one opening; no booking/hold. HH:MM:SS wall times."""
         return call(iparcs.check_slot, resource_id, day, start_time, end_time)
 
+    @mcp.tool()
+    def workflow_plan(intent: dict, observation: dict, now: str) -> dict:
+        """Pure offline next-step preview. Input assertions are not verified authority. No live actions/timers."""
+        from .workflow_api import plan
+        return call(plan, intent, observation, now)
+
+    @mcp.tool()
+    def workflow_reconcile(intent: dict, observation: dict, now: str, operation_key: str) -> dict:
+        """Read only the configured local operation journal; never clear it or retry a write."""
+        from .workflow_api import reconcile_local
+        return call(reconcile_local, intent, observation, now, operation_journal_path(state_dir), operation_key)
+
+    @mcp.tool()
+    def iparcs_preparation_plan(selection: dict, now: str) -> dict:
+        """Offline protected-contract preview only. Selection/validation have unknown effects; no dispatch."""
+        from .iparcs_planning import preparation_plan
+        return call(preparation_plan, selection, now)
+
+    @mcp.tool()
+    def iparcs_compare_cart_snapshots(selection: dict, transactions: dict, summary: dict,
+                                     browser_transactions: dict | None = None,
+                                     browser_summary: dict | None = None,
+                                     browser_url: str | None = None) -> dict:
+        """Compare caller-supplied sanitized snapshots locally; does not navigate, authenticate or submit."""
+        from .iparcs_planning import compare_cart
+        return call(compare_cart, selection, transactions, summary, browser_transactions, browser_summary, browser_url)
+
     if client.writes_enabled:
         @mcp.tool()
         def propose_match(proposal: ProposalInput, operation_key: str, confirmed: bool = False) -> dict:
@@ -101,7 +130,7 @@ def main(argv=None):
     args = p.parse_args(argv)
     client = runtime(use_keychain=args.keychain, writes=args.enable_writes, state_dir=args.state_dir)
     try:
-        make_server(client).run(transport="stdio")
+        make_server(client, state_dir=args.state_dir).run(transport="stdio")
     finally:
         client.transport.close()
         if client.journal:

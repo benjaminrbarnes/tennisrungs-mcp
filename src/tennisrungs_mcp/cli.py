@@ -7,17 +7,18 @@ import warnings
 from .auth import Keychain, interactive_login
 from .models import AuthenticationRequired, IntegrationError, ProposalInput, ScoreInput
 from .runtime import runtime
+from .runtime import operation_journal_path
 
 
-def prompt_credentials():
+def prompt_credentials(site_label="TennisRungs"):
     if not sys.stdin.isatty():
         raise AuthenticationRequired("Open a local Terminal for non-echo credential entry; redirected input is refused")
-    username = input("TennisRungs username: ")
+    username = input(f"{site_label} username: ")
     try:
         with warnings.catch_warnings():
             # getpass otherwise falls back to echoing input. Never allow that.
             warnings.simplefilter("error", getpass.GetPassWarning)
-            password = getpass.getpass("TennisRungs password (hidden; not stored): ")
+            password = getpass.getpass(f"{site_label} password (hidden; not stored): ")
     except (getpass.GetPassWarning, EOFError):
         raise AuthenticationRequired("A secure non-echo terminal prompt is unavailable") from None
     return username, password
@@ -46,6 +47,15 @@ def main(argv=None):
     slot.add_argument("day")
     slot.add_argument("start_time")
     slot.add_argument("end_time")
+    for name in ["prepare-plan", "compare-cart"]:
+        ips.add_parser(name).add_argument("--input", required=True, help="Local non-secret offline JSON")
+    ips.add_parser("auth-plan", help="Known source login contract and gaps only; no prompts, login or storage")
+    workflow = sub.add_parser("workflow", help="Offline planning only; no live adapters, jobs, texts or calendar changes")
+    workflows = workflow.add_subparsers(dest="workflow_command", required=True)
+    workflows.add_parser("plan").add_argument("--input", required=True)
+    rec = workflows.add_parser("reconcile")
+    rec.add_argument("--input", required=True)
+    rec.add_argument("--operation-key", required=True)
     login = sub.add_parser("login", help="Interactive normal login; never reads browser credentials")
     login.add_argument("--approve-session-storage", action="store_true", required=True,
                        help="Explicitly approve storing resulting site session in macOS Keychain")
@@ -68,7 +78,30 @@ def main(argv=None):
     args = p.parse_args(argv)
     client = None
     try:
+        if args.command == "workflow":
+            from .workflow_api import plan, reconcile_local
+            with open(args.input) as f:
+                data = json.load(f)
+            if not isinstance(data, dict) or set(data) != {"intent", "observation", "now"}:
+                raise IntegrationError("Expected intent, observation and now planning fields only")
+            if args.workflow_command == "plan":
+                result = plan(**data)
+            else:
+                result = reconcile_local(**data, journal_path=operation_journal_path(args.state_dir), operation_key=args.operation_key)
+            print(json.dumps(result, indent=2))
+            return 0
         if args.command == "iparcs":
+            if args.ip_command == "auth-plan":
+                from .iparcs_auth_contract import auth_plan
+                print(json.dumps(auth_plan(), indent=2))
+                return 0
+            if args.ip_command in ["prepare-plan", "compare-cart"]:
+                from .iparcs_planning import preparation_plan, compare_cart
+                with open(args.input) as f:
+                    data = json.load(f)
+                result = preparation_plan(**data) if args.ip_command == "prepare-plan" else compare_cart(**data)
+                print(json.dumps(result, indent=2))
+                return 0
             from .iparcs_reads import IParcsReads
             iparcs = IParcsReads()
             if args.ip_command == "search":

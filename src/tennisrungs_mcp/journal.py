@@ -51,5 +51,18 @@ class Journal:
         return dict(zip(["key", "kind", "state", "challenge_id", "updated_at"], r)) if r else None
 
     @staticmethod
+    def inspect_existing(path, key):
+        """Read an existing ledger without creating, clearing or altering state."""
+        try:
+            db = sqlite3.connect(Path(path).resolve().as_uri() + "?mode=ro", uri=True, timeout=10)
+            try:
+                r = db.execute("SELECT key,kind,state,challenge_id,updated_at FROM operations WHERE key=?", (key,)).fetchone()
+                return dict(zip(["key", "kind", "state", "challenge_id", "updated_at"], r)) if r else None
+            finally:
+                db.close()
+        except sqlite3.Error:
+            raise SafetyError("Existing journal could not be read; no state was created or changed") from None
+
+    @staticmethod
     def now():
         return datetime.now(timezone.utc).isoformat()
