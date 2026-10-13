@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tennisrungs-mcp"
+version = "0.1.0"
+description = "Direct HTTP TennisRungs client, CLI and MCP server with guarded writes"
+requires-python = ">=3.11"
+dependencies = ["httpx>=0.28,<1", "beautifulsoup4>=4.13,<5", "mcp>=1.12,<2"]
+
+[project.optional-dependencies]
+test = ["pytest>=8,<10", "build>=1,<2"]
+
+[project.scripts]
+tennisrungs = "tennisrungs_mcp.cli:main"
+tennisrungs-mcp = "tennisrungs_mcp.server:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
