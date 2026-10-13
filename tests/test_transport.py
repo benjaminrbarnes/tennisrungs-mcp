@@ -1,5 +1,6 @@
 import httpx
 import pytest
+import logging
 
 from tennisrungs_mcp.models import AuthenticationRequired, IntegrationError, UnknownOutcome
 from tennisrungs_mcp.transport import Transport, parse_write_response
@@ -64,3 +65,10 @@ def test_response_semantics_not_http_success():
 def test_unrelated_credential_domains_refused():
     with pytest.raises(AuthenticationRequired):
         transport(lambda r: httpx.Response(200), [{"name": "x", "value": "synthetic", "domain": "example.com"}])
+
+
+def test_library_logs_do_not_expose_query_tokens(caplog):
+    caplog.set_level(logging.DEBUG)
+    t = transport(lambda r: httpx.Response(200, json={"Success": True}), COOKIE)
+    t.post("/Player/ProposeMatch", params={"__RequestVerificationToken": "synthetic-token-marker"})
+    assert "synthetic-token-marker" not in caplog.text

@@ -1,5 +1,6 @@
 import http.cookiejar
 import json
+import logging
 from urllib.parse import urljoin, urlparse
 
 import httpx
@@ -14,6 +15,10 @@ class Transport:
     """Single-attempt requests; no TLS bypass, browser impersonation or challenge solver."""
 
     def __init__(self, cookies=None, client=None):
+        # httpx INFO logs full URLs. The legacy proposal contract places hidden
+        # form fields in the query string; host logging must not expose them.
+        logging.getLogger("httpx").setLevel(logging.WARNING)
+        logging.getLogger("httpcore").setLevel(logging.WARNING)
         self.client = client or httpx.Client(timeout=20, follow_redirects=False,
                                             headers={"User-Agent": "tennisrungs-mcp/0.1.0"})
         if cookies:

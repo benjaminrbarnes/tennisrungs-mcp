@@ -6,7 +6,9 @@ Research date: 2026-10-13. No credential values or real match fixtures included.
 
 Anonymous public history and public pending-challenges HTML were read using normal
 HTTP. The new client also successfully parsed a public history response in a live
-read-only smoke test. `/Player`, membership, rankings, proposals and score-entry
+read-only smoke test. The installed MCP stdio server also initialized and returned
+public history successfully against the real site, with no session credential.
+`/Player`, membership, rankings, proposals and score-entry
 forms were inspected in an already signed-in browser through supported DOM reads.
 Authenticated network requests, headers, cookies and token lifecycle were not
 observable through that tool. An anonymous Python account-page request returned
