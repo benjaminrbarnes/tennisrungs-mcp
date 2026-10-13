@@ -71,6 +71,13 @@ remove the local credential; that does not prove server-side session revocation.
 Python/OS may retain transient secret bytes in memory; this is not a secure-erasure
 guarantee. Keychain ACL behavior and the actual cookie lifecycle need validation.
 
+The user should run the login command in macOS Terminal and enter the password
+directly at the hidden prompt, never in chat, command arguments, environment
+variables or a pipe. The CLI requires a terminal and refuses getpass's echoing
+fallback. Password input goes directly to the local process without model context;
+it is not shown in Terminal output or saved in shell history. Keychain storage
+occurs only after direct HTTP dashboard verification succeeds.
+
 ## MCP stdio
 
 ```sh
@@ -121,12 +128,29 @@ All requests are single-attempt with normal TLS checks. 401/403 and 429 stop. No
 automatic write retries. Pagination/schema drift blocks writes. No rate quota is
 known; use infrequent reads, serialize clients, and respect vendor limits.
 
-## iParcs boundary
+## iParcs anonymous reads and boundary
 
-`iparcs.py` defines availability data and an adapter protocol only. Its court-only
-link does not preserve date/time. It contains no private ACTIVE Net requests,
-booking, payment, or changes to existing scheduling jobs. A licensed official read
-adapter can be added separately. Payment/browser checkout remains separate.
+The separate `iparcs_consumer.py` adapter implements verified anonymous consumer
+facility search, resource detail and daily availability. It requires no Keychain
+or browser login. CLI commands:
+
+```sh
+.venv/bin/tennisrungs iparcs search Bagley
+.venv/bin/tennisrungs iparcs detail 7247
+.venv/bin/tennisrungs iparcs availability 7247 <start-ISO-date> <end-ISO-date>
+.venv/bin/tennisrungs iparcs check-slot 7247 <ISO-date> 09:30:00 11:30:00
+```
+
+MCP tools: `iparcs_search_facilities`, `iparcs_resource_detail`,
+`iparcs_daily_availability`, `iparcs_check_slot`. Results include timestamp, source
+and coverage; availability is not a hold or booking. See
+[consumer evidence and boundaries](docs/iparcs-evidence.md).
+
+`iparcs.py` retains the adapter protocol and court-only link, which does not
+preserve date/time. Authenticated reads and protected writes remain unimplemented.
+The transport allowlist refuses login, drafts, carts, checkout and order commit.
+No existing scheduling job is changed. A licensed official adapter may be added
+separately. Payment/browser checkout remains separate.
 
 ## Development
 

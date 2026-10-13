@@ -4,7 +4,7 @@ from urllib.parse import parse_qs
 import httpx
 import pytest
 
-from tennisrungs_mcp.client import Client
+from tennisrungs_mcp.client import Client, validate_score_string
 from tennisrungs_mcp.journal import Journal
 from tennisrungs_mcp.models import ProposalInput, SafetyError, ScoreInput, UnknownOutcome
 from tennisrungs_mcp.transport import Transport
@@ -116,6 +116,8 @@ def test_accept_exact_proposal_and_verified_result(tmp_path):
         if r.method == "POST":
             posted.append(r)
             return httpx.Response(200, json={"Success": True})
+        if "Rankings" in r.url.path:
+            return httpx.Response(200, text=RANKINGS)
         return httpx.Response(200, text=dashboard(status="ACCEPTED", own=bool(posted)))
     c = client(tmp_path, handler)
     assert c.accept_proposal(303, 101, 201, "one", confirmed=True).state == "VERIFIED"
@@ -133,3 +135,39 @@ def test_score_contract_and_acknowledgment_not_verified(tmp_path):
     result = c.report_score(ScoreInput(303, 101, 201, "6-4, 7-5"), "one", confirmed=True)
     assert result.state == "ACKNOWLEDGED"
     assert parse_qs(posted[0].content.decode()) == {"score": ["6-4, 7-5"], "challengeid": ["303"], "matchOutcome": ["PlayedThrough"], "winnerId": ["201"]}
+
+
+def test_proposal_other_venue_readback_is_unknown(tmp_path):
+    posted = []
+    def handler(r):
+        if r.method == "POST":
+            posted.append(r)
+            return httpx.Response(200, json={"Success": True})
+        if r.url.path == "/Player":
+            h = dashboard(own=bool(posted))
+            return httpx.Response(200, text=h.replace("Location: Demo Court", "Location: Other Court"))
+        return httpx.Response(200, text=FORM if "ProposeMatch" in r.url.path else RANKINGS)
+    c = client(tmp_path, handler)
+    with pytest.raises(UnknownOutcome):
+        c.propose_match(P, "one", confirmed=True)
+    assert c.journal.get("one")["state"] == "UNKNOWN"
+
+
+def test_accept_wrong_authenticated_season_team_never_posts(tmp_path):
+    def handler(r):
+        assert r.method == "GET"
+        return httpx.Response(200, text=RANKINGS.replace("ShowProposeMatch(201", "ShowProposeMatch(999") if "Rankings" in r.url.path else dashboard())
+    with pytest.raises(SafetyError, match="season"):
+        client(tmp_path, handler).accept_proposal(303, 101, 201, "one", confirmed=True)
+
+
+@pytest.mark.parametrize("score", ["---", "0-0, 0-0", "4-6, 5-7", "7-6 (8-10), 6-4", "6-4,,6-2"])
+def test_invalid_completed_scores_rejected(score):
+    with pytest.raises(SafetyError):
+        validate_score_string(score, "PlayedThrough")
+
+
+def test_valid_match_tiebreak_and_incident_scores():
+    validate_score_string("6-4,4-6,(10-8)", "PlayedThrough")
+    validate_score_string("0-0,0-0", "NoShow")
+    validate_score_string("-", "Forfeit")

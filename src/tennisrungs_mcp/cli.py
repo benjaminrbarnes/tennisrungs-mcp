@@ -2,11 +2,25 @@ import argparse
 import getpass
 import json
 import sys
-from dataclasses import asdict
+import warnings
 
 from .auth import Keychain, interactive_login
-from .models import IntegrationError, ProposalInput, ScoreInput
+from .models import AuthenticationRequired, IntegrationError, ProposalInput, ScoreInput
 from .runtime import runtime
+
+
+def prompt_credentials():
+    if not sys.stdin.isatty():
+        raise AuthenticationRequired("Open a local Terminal for non-echo credential entry; redirected input is refused")
+    username = input("TennisRungs username: ")
+    try:
+        with warnings.catch_warnings():
+            # getpass otherwise falls back to echoing input. Never allow that.
+            warnings.simplefilter("error", getpass.GetPassWarning)
+            password = getpass.getpass("TennisRungs password (hidden; not stored): ")
+    except (getpass.GetPassWarning, EOFError):
+        raise AuthenticationRequired("A secure non-echo terminal prompt is unavailable") from None
+    return username, password
 
 
 def main(argv=None):
@@ -19,6 +33,19 @@ def main(argv=None):
         sub.add_parser(name)
     for name, field in [("rankings", "ladder_id"), ("history", "team_id")]:
         sub.add_parser(name).add_argument(field, type=int)
+    ip = sub.add_parser("iparcs", help="Anonymous Atlanta court reads; no bookings or credentials")
+    ips = ip.add_subparsers(dest="ip_command", required=True)
+    ips.add_parser("search").add_argument("keyword")
+    ips.add_parser("detail").add_argument("resource_id", type=int)
+    av = ips.add_parser("availability")
+    av.add_argument("resource_id", type=int)
+    av.add_argument("start_date")
+    av.add_argument("end_date")
+    slot = ips.add_parser("check-slot")
+    slot.add_argument("resource_id", type=int)
+    slot.add_argument("day")
+    slot.add_argument("start_time")
+    slot.add_argument("end_time")
     login = sub.add_parser("login", help="Interactive normal login; never reads browser credentials")
     login.add_argument("--approve-session-storage", action="store_true", required=True,
                        help="Explicitly approve storing resulting site session in macOS Keychain")
@@ -41,9 +68,21 @@ def main(argv=None):
     args = p.parse_args(argv)
     client = None
     try:
+        if args.command == "iparcs":
+            from .iparcs_reads import IParcsReads
+            iparcs = IParcsReads()
+            if args.ip_command == "search":
+                result = iparcs.search(args.keyword)
+            elif args.ip_command == "detail":
+                result = iparcs.detail(args.resource_id)
+            elif args.ip_command == "availability":
+                result = iparcs.availability(args.resource_id, args.start_date, args.end_date)
+            else:
+                result = iparcs.check_slot(args.resource_id, args.day, args.start_time, args.end_time)
+            print(json.dumps(result.to_dict(), indent=2))
+            return 0
         if args.command == "login":
-            username = input("TennisRungs username: ")
-            password = getpass.getpass("TennisRungs password (not stored): ")
+            username, password = prompt_credentials()
             cookies = interactive_login(username, password)
             Keychain().store(cookies)
             print(json.dumps({"session_stored": True, "storage": "macOS Keychain", "service": "tennisrungs-mcp.session.v1"}))

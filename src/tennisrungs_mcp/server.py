@@ -5,10 +5,12 @@ from mcp.server.fastmcp import FastMCP
 
 from .models import IntegrationError, ProposalInput, ScoreInput
 from .runtime import runtime
+from .iparcs_reads import IParcsReads
 
 
 def make_server(client):
     mcp = FastMCP("tennisrungs")
+    iparcs = IParcsReads()
 
     def call(fn, *args, **kwargs):
         try:
@@ -47,6 +49,26 @@ def make_server(client):
     def get_player_history(team_id: int) -> dict:
         """Read public history with original result orientation and score string."""
         return call(client.get_player_history, team_id)
+
+    @mcp.tool()
+    def iparcs_search_facilities(keyword: str) -> dict:
+        """Anonymous Atlanta facility search. Observed query POST; no draft creation."""
+        return call(iparcs.search, keyword)
+
+    @mcp.tool()
+    def iparcs_resource_detail(resource_id: int) -> dict:
+        """Anonymous resource rules, detail and opening-hours read."""
+        return call(iparcs.detail, resource_id)
+
+    @mcp.tool()
+    def iparcs_daily_availability(resource_id: int, start_date: str, end_date: str) -> dict:
+        """Anonymous calendar read with complete date coverage; ISO dates, Atlanta time."""
+        return call(iparcs.availability, resource_id, start_date, end_date)
+
+    @mcp.tool()
+    def iparcs_check_slot(resource_id: int, day: str, start_time: str, end_time: str) -> dict:
+        """Check whole-block containment in one opening; no booking/hold. HH:MM:SS wall times."""
+        return call(iparcs.check_slot, resource_id, day, start_time, end_time)
 
     if client.writes_enabled:
         @mcp.tool()

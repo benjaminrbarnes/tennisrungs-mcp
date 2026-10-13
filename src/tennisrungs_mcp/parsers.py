@@ -45,7 +45,7 @@ def current_ladders(html):
 def my_matches(html):
     s = soup(html)
     panel = s.select_one("#tabs-1")
-    if panel is None:
+    if panel is None or not panel.select_one("table"):
         raise UnsupportedContract("Own-challenges panel not found")
     rows = []
     for row in panel.select("tr"):
@@ -56,18 +56,22 @@ def my_matches(html):
         link = cells[1].select_one('a[href*="PlayerMatches"]')
         status = next((v for v in ["PROPOSED", "ACCEPTED", "PENDING"]
                        if re.search(rf"\b{v}\b", details)), "UNKNOWN")
+        cids = set()
         cid = None
         lid = None
         for a in row.select('a[href], [onclick]'):
             href = a.get("href", "")
             q = parse_qs(urlparse(href).query)
             if q.get("challengeId"):
-                cid = int(q["challengeId"][0])
+                cids.add(int(q["challengeId"][0]))
                 lid = int(q["ladderId"][0]) if q.get("ladderId") else None
             handler = a.get("onclick", "")
             m = re.search(r"WithdrawChallenge\(this,\s*(\d+)", handler)
             if m:
-                cid = int(m[1])
+                cids.add(int(m[1]))
+        if len(cids) > 1:
+            raise UnsupportedContract("Conflicting challenge identities in one row")
+        cid = next(iter(cids), None)
         when = re.search(r"Scheduled For:\s*(.*?)(?=Location:|$)", details)
         location = re.search(r"Location:\s*(.*)$", details)
         rows.append(Match(cid, ladder, opponent, status,
@@ -79,7 +83,7 @@ def my_matches(html):
 
 def open_proposals(html):
     panel = soup(html).select_one("#tabs-5")
-    if panel is None:
+    if panel is None or not panel.select_one("table"):
         raise UnsupportedContract("Open-proposals panel not found")
     rows = []
     for row in panel.select("tr"):
@@ -108,30 +112,41 @@ def table_with_headers(html, required):
 
 
 def rankings(html):
-    table = table_with_headers(html, ["Rank", "Player", "Record", "Points"])
+    required = ["Rank", "Player", "USTA Rating", "Record", "Points", "Streak"]
+    table = table_with_headers(html, required)
+    headers = [text(h) for h in table.select("th")]
+    indexes = {name: headers.index(name) for name in required}
     out = []
     for row in table.select("tr"):
         c = row.find_all("td", recursive=False)
-        if len(c) < 7:
+        if not c:
             continue
-        a = c[1].select_one('a[href*="PlayerMatches"]')
+        if len(c) <= max(indexes.values()):
+            raise UnsupportedContract("Ranking row schema changed")
+        a = c[indexes["Player"]].select_one('a[href*="PlayerMatches"]')
         tid = team_id(a["href"]) if a else None
         if tid is None:
             raise UnsupportedContract("Ranking team identity missing")
-        out.append(Ranking(tid, text(a), text(c[0]), text(c[2]), text(c[3]), text(c[4]), text(c[5])))
+        out.append(Ranking(tid, text(a), *(text(c[indexes[n]]) for n in ["Rank", "USTA Rating", "Record", "Points", "Streak"])))
     return out
 
 
 def history(html):
     table = table_with_headers(html, ["Date", "Vs.", "Result", "Score"])
+    headers = [text(h) for h in table.select("th")]
+    indexes = {name: headers.index(name) for name in ["Date", "Vs.", "Result", "Score"]}
     out = []
     for row in table.select("tr"):
         c = row.find_all("td", recursive=False)
-        if len(c) != 4:
+        if not c:
             continue
-        a = c[1].select_one('a[href*="PlayerMatches"]')
-        out.append(HistoryRow(text(c[0]), text(a) if a else text(c[1]),
-                              team_id(a["href"]) if a else None, text(c[2]), text(c[3])))
+        if len(c) <= max(indexes.values()):
+            raise UnsupportedContract("History row schema changed")
+        opponent = c[indexes["Vs."]]
+        a = opponent.select_one('a[href*="PlayerMatches"]')
+        out.append(HistoryRow(text(c[indexes["Date"]]), text(a) if a else text(opponent),
+                              team_id(a["href"]) if a else None,
+                              text(c[indexes["Result"]]), text(c[indexes["Score"]])))
     return out
 
 
@@ -144,7 +159,10 @@ def coverage(html, rows, label=None):
     complete = not paged
     if label:
         m = re.search(re.escape(label) + r"\s*\((\d+)\)", text(s))
-        if m and int(m[1]) != len(rows):
+        if not m:
+            complete = False
+            warnings.append("Expected displayed count not found")
+        elif int(m[1]) != len(rows):
             complete = False
             warnings.append("Displayed count differs from parsed count")
     return complete, warnings
@@ -160,6 +178,6 @@ def proposal_form(html):
     if not required <= names:
         raise UnsupportedContract("Proposal form schema changed")
     defaults = [(e["name"], e.get("value", "")) for e in form.select('input[type="hidden"][name]')]
-    options = {e.get("name"): {o.get("value", text(o)) for o in e.select("option")}
+    options = {e.get("name"): {o.get("value", text(o)): text(o) for o in e.select("option")}
                for e in form.select("select[name]")}
     return defaults, options

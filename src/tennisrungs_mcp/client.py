@@ -14,6 +14,31 @@ def positive(value):
     return value
 
 
+def validate_score_string(score, outcome):
+    """Basic numeric/orientation checks; league scoring rules still need server validation."""
+    if not isinstance(score, str) or not 1 <= len(score) <= 120:
+        raise SafetyError("A bounded score string is required")
+    if score == "-" and outcome != "PlayedThrough":
+        return
+    parts = score.split(",")
+    if not 1 <= len(parts) <= 5:
+        raise SafetyError("Unsupported number of score lines")
+    wins = losses = 0
+    for part in parts:
+        m = re.fullmatch(r"\s*(?:(\d{1,2})-(\d{1,2})(?:\s*\((\d{1,2})-(\d{1,2})\))?|\((\d{1,2})-(\d{1,2})\))\s*", part)
+        if not m:
+            raise SafetyError("Invalid numeric set/tiebreak notation")
+        a, b = (int(m[1]), int(m[2])) if m[1] is not None else (int(m[5]), int(m[6]))
+        if outcome == "PlayedThrough" and a == b:
+            raise SafetyError("Completed score lines cannot be tied")
+        if m[3] is not None and (int(m[3]) == int(m[4]) or (int(m[3]) > int(m[4])) != (a > b)):
+            raise SafetyError("Tiebreak orientation conflicts with set result")
+        wins += a > b
+        losses += a < b
+    if outcome == "PlayedThrough" and wins <= losses:
+        raise SafetyError("Completed score must be oriented to the selected winner")
+
+
 class Client:
     def __init__(self, transport, journal=None, *, writes_enabled=False):
         self.transport = transport
@@ -65,7 +90,8 @@ class Client:
             raise SafetyError("Invalid proposal date/time")
         if not p.preferred_location.strip() or len(p.preferred_location) > 1000:
             raise SafetyError("A bounded explicit location note is required")
-        if p.ladder_id not in {l.ladder_id for l in self.list_current_ladders().rows}:
+        membership = self.list_current_ladders()
+        if not membership.complete or p.ladder_id not in {l.ladder_id for l in membership.rows}:
             raise SafetyError("Current ladder membership not established")
         ranking = self.transport.get(f"/Ladders/Rankings/{p.ladder_id}", private=True)
         ids = re.findall(r"tr\.ShowProposeMatch\((\d+)", ranking)
@@ -76,6 +102,9 @@ class Client:
         hidden_team = next((v for n, v in defaults if n == "TeamId"), None)
         if hidden_team != str(p.team_id) or str(p.location_id) not in options.get("Location", set()):
             raise SafetyError("Live team or venue does not match requested proposal")
+        for name, value in [("Hour", str(p.hour)), ("Minute", f"{p.minute:02d}"), ("AmOrPm", p.am_or_pm)]:
+            if value not in options.get(name, {}):
+                raise UnsupportedContract("Requested time not supported by live form options")
         # Preserve anti-forgery fields if the form begins supplying them. Never print them.
         fields = [(n, v) for n, v in defaults if n not in ["TeamId", "ShowMyEmail"]]
         fields += [("TeamId", str(p.team_id)), ("Location", str(p.location_id)),
@@ -85,7 +114,7 @@ class Client:
         if p.show_email:
             fields.append(("ShowMyEmail", "true"))
         fields.append(("ShowMyEmail", "false"))
-        return fields
+        return fields, options["Location"][str(p.location_id)]
 
     def assert_write(self, confirmed):
         if not self.writes_enabled or not confirmed:
@@ -109,7 +138,7 @@ class Client:
 
     def propose_match(self, p: ProposalInput, operation_key, *, confirmed=False):
         self.assert_write(confirmed)
-        fields = self.prepare_proposal(p)
+        fields, expected_venue = self.prepare_proposal(p)
         before = self.list_own_matches()
         if not before.complete or any(m.challenge_id is None or m.status == "UNKNOWN" for m in before.rows):
             raise SafetyError("Own match coverage/identity incomplete")
@@ -127,6 +156,7 @@ class Client:
             after = self.list_own_matches()
             new = [m for m in after.rows if m.challenge_id not in {x.challenge_id for x in before.rows}
                    and m.status in ["PROPOSED", "ACCEPTED"] and m.scheduled_text
+                   and m.challenge_id is not None and m.venue == expected_venue
                    and self.site_time(m.scheduled_text) == desired and m.ladder_name in
                    {l.name for l in self.list_current_ladders().rows if l.ladder_id == p.ladder_id}]
             if not after.complete or len(new) != 1:
@@ -166,7 +196,12 @@ class Client:
         for value in [challenge_id, ladder_id, team_id]:
             positive(value)
         ladders = self.list_current_ladders()
+        if not ladders.complete:
+            raise SafetyError("Current ladder membership coverage incomplete")
         names = {l.name for l in ladders.rows if l.ladder_id == ladder_id}
+        ranking = self.transport.get(f"/Ladders/Rankings/{ladder_id}", private=True)
+        if re.findall(r"tr\.ShowProposeMatch\((\d+)", ranking) != [str(team_id)]:
+            raise SafetyError("Accepting team does not match authenticated season identity")
         proposals = self.list_open_proposals()
         selected = [p for p in proposals.rows if p.challenge_id == challenge_id]
         if not proposals.complete or len(selected) != 1 or selected[0].ladder_name not in names or selected[0].accept_team_id != team_id:
@@ -193,8 +228,7 @@ class Client:
             positive(value)
         if score.outcome not in ["PlayedThrough", "Injury", "Forfeit", "NoShow", "CourtTimeExpired"]:
             raise SafetyError("Unknown match outcome")
-        if not re.fullmatch(r"[0-9(), \-]{1,120}", score.score):
-            raise SafetyError("Invalid score syntax; use site-compatible numeric set notation")
+        validate_score_string(score.score, score.outcome)
         own = self.list_own_matches()
         rows = [m for m in own.rows if m.challenge_id == score.challenge_id and m.status == "ACCEPTED" and m.ladder_id == score.ladder_id]
         if not own.complete or len(rows) != 1:

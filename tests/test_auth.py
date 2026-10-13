@@ -1,5 +1,7 @@
 import httpx
 import pytest
+import warnings
+import getpass
 
 from tennisrungs_mcp import auth
 from tennisrungs_mcp.models import AuthenticationRequired, UnsupportedContract
@@ -59,3 +61,32 @@ def test_rejected_password_is_not_retried(monkeypatch):
     with pytest.raises(AuthenticationRequired):
         auth.interactive_login("synthetic-user", "synthetic-password")
     assert [r.method for r in seen] == ["GET", "POST"]
+
+
+def test_prompt_refuses_redirected_input_before_reading(monkeypatch):
+    from tennisrungs_mcp.cli import prompt_credentials
+    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+    monkeypatch.setattr("builtins.input", lambda _: pytest.fail("must not read redirected credentials"))
+    with pytest.raises(AuthenticationRequired, match="Terminal"):
+        prompt_credentials()
+
+
+def test_prompt_never_uses_echo_fallback(monkeypatch):
+    from tennisrungs_mcp.cli import prompt_credentials
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda _: "synthetic-user")
+    def unavailable(_):
+        warnings.warn("no secure terminal", getpass.GetPassWarning)
+        pytest.fail("would have entered insecure fallback")
+    monkeypatch.setattr(getpass, "getpass", unavailable)
+    with pytest.raises(AuthenticationRequired, match="non-echo"):
+        prompt_credentials()
+
+
+def test_local_prompt_does_not_echo_password(capsys, monkeypatch):
+    from tennisrungs_mcp.cli import prompt_credentials
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda _: "synthetic-user")
+    monkeypatch.setattr(getpass, "getpass", lambda _: "synthetic-password-marker")
+    assert prompt_credentials() == ("synthetic-user", "synthetic-password-marker")
+    assert "synthetic-password-marker" not in capsys.readouterr().out

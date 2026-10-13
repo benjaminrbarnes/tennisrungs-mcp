@@ -48,4 +48,28 @@ def test_count_and_pagination_fail_closed():
 def test_form_preserves_token_without_treating_it_as_bearer():
     defaults, options = parsers.proposal_form(FORM)
     assert ("__RequestVerificationToken", "synthetic-test-only") in defaults
-    assert options["Location"] == {"401"}
+    assert options["Location"] == {"401": "Demo Court"}
+
+
+def test_missing_count_never_establishes_write_coverage():
+    h = dashboard().replace("My Challenges (1)", "My Challenges")
+    complete, warnings = parsers.coverage(h, parsers.my_matches(h), "My Challenges")
+    assert not complete and "Expected displayed count not found" in warnings
+
+
+def test_conflicting_row_ids_fail_closed():
+    h = dashboard().replace("challengeId=303", "challengeId=999")
+    with pytest.raises(UnsupportedContract, match="Conflicting"):
+        parsers.my_matches(h)
+
+
+def test_history_column_reordering_preserves_orientation():
+    h = '''<table><tr><th>Score</th><th>Result</th><th>Vs.</th><th>Date</th></tr>
+    <tr><td>6-3,7-6</td><td>L</td><td><a href="/Public/PlayerMatches?teamId=202">Demo Other</a></td><td>10/1/2099</td></tr></table>'''
+    row = parsers.history(h)[0]
+    assert row.date == "10/1/2099" and row.result == "L" and row.score == "6-3,7-6"
+
+
+def test_malformed_history_row_is_not_silently_dropped():
+    with pytest.raises(UnsupportedContract, match="row"):
+        parsers.history(HISTORY.replace('<td>L</td>', ''))
