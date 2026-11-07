@@ -22,13 +22,3 @@ RANKINGS = '''<button onclick="tr.ShowProposeMatch(201,this)">Propose Match</but
 HISTORY = '''<table><tr><th>Date</th><th>Vs.</th><th>Result</th><th>Score</th></tr>
 <tr><td>10/1/2099</td><td>#2 <a href="/Public/PlayerMatches?teamId=202">Demo Opponent</a></td><td>L</td><td>6-3,7-6 (10-8)</td></tr>
 <tr><td>10/2/2099</td><td><a href="/Public/PlayerMatches?teamId=203">Demo Other</a></td><td>W</td><td>3-6,6-2,5-2Forfeit</td></tr></table>'''
-
-FORM = '''<form action="/Player/ProposeMatch/201" method="post"><input type="hidden" name="TeamId" value="201">
-<input type="hidden" name="__RequestVerificationToken" value="synthetic-test-only">
-<select name="Location"><option value="401">Demo Court</option></select>
-<input name="MatchDate"><input name="PreferredLocation"><select name="Hour"><option value="10">10</option></select>
-<select name="Minute"><option value="00">00</option></select><select name="AmOrPm"><option value="AM">AM</option></select>
-<input type="checkbox" name="ShowMyEmail"><input type="hidden" name="ShowMyEmail" value="false"></form>'''
-
-SCORE = '''<select name="WinnerId"><option value="201">Demo Player</option><option value="202">Demo Opponent</option></select>
-<input name="challengeid" type="hidden" value="303">'''

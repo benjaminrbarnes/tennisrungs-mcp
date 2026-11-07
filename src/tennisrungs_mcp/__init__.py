@@ -1,3 +1,2 @@
-"""Direct HTTP integration; no browser control or credential extraction."""
-
-__version__ = "0.1.0"
+"""Read-only TennisRungs client, CLI and MCP server."""
+__version__ = "0.2.0"

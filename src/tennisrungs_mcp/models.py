@@ -14,14 +14,6 @@ class UnsupportedContract(IntegrationError):
     pass
 
 
-class SafetyError(IntegrationError):
-    pass
-
-
-class UnknownOutcome(IntegrationError):
-    pass
-
-
 @dataclass(frozen=True)
 class Ladder:
     ladder_id: int
@@ -78,39 +70,6 @@ class ReadResult:
     rows: list[Any]
     complete: bool
     warnings: list[str] = field(default_factory=list)
-
-    def to_dict(self):
-        return asdict(self)
-
-
-@dataclass(frozen=True)
-class ProposalInput:
-    team_id: int
-    ladder_id: int
-    location_id: int
-    match_date: str  # ISO date, formatted to site convention at transport boundary
-    hour: int
-    minute: int
-    am_or_pm: str
-    preferred_location: str
-    show_email: bool = False
-
-
-@dataclass(frozen=True)
-class ScoreInput:
-    challenge_id: int
-    ladder_id: int
-    winner_team_id: int
-    score: str
-    outcome: str = "PlayedThrough"
-
-
-@dataclass(frozen=True)
-class WriteResult:
-    operation_key: str
-    state: str
-    challenge_id: int | None = None
-    message: str = ""
 
     def to_dict(self):
         return asdict(self)

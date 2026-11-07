@@ -4,10 +4,27 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tennisrungs-mcp"
-version = "0.1.0"
-description = "Direct HTTP TennisRungs client, CLI and MCP with guarded writes and anonymous iParcs reads"
+version = "0.2.0"
+description = "Read-only TennisRungs MCP and CLI for ladders, matches, rankings and player history"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{name = "Benjamin Barnes"}]
+keywords = ["mcp", "tennis", "tennisrungs", "model-context-protocol"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Operating System :: MacOS",
+  "Operating System :: POSIX :: Linux",
+]
 requires-python = ">=3.11"
 dependencies = ["httpx>=0.28,<1", "beautifulsoup4>=4.13,<5", "mcp>=1.12,<2"]
+
+[project.urls]
+Homepage = "https://github.com/benjaminrbarnes/tennisrungs-mcp"
+Issues = "https://github.com/benjaminrbarnes/tennisrungs-mcp/issues"
+Changelog = "https://github.com/benjaminrbarnes/tennisrungs-mcp/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 test = ["pytest>=8,<10", "build>=1,<2"]

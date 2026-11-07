@@ -1,7 +1,7 @@
 """Explicit interactive login and opt-in Keychain storage; no browser cookie access.
 
-The site authentication contract is not live-validated yet. Credentials are
-submitted only by the local interactive login command, never through MCP.
+Normal login and stored-session reads have been exercised against the live site.
+Credentials are submitted only by the local login command, never through MCP.
 """
 import ctypes
 import json
@@ -82,6 +82,8 @@ def interactive_login(username, password):
         if r.status_code != 200:
             raise AuthenticationRequired(f"Login page returned HTTP {r.status_code}; stop for supported renewal")
         s = soup(r.text)
+        if s.select_one('[data-sitekey], iframe[src*="recaptcha"], input[name="g-recaptcha-response"]'):
+            raise AuthenticationRequired("Login requires a security challenge; complete it through the website")
         password_input = s.select_one('input[type="password"][name]')
         form = password_input.find_parent("form") if password_input else None
         if not form or form.get("method", "get").lower() != "post":

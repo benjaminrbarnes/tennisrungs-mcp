@@ -90,3 +90,14 @@ def test_local_prompt_does_not_echo_password(capsys, monkeypatch):
     monkeypatch.setattr(getpass, "getpass", lambda _: "synthetic-password-marker")
     assert prompt_credentials() == ("synthetic-user", "synthetic-password-marker")
     assert "synthetic-password-marker" not in capsys.readouterr().out
+
+
+def test_security_challenge_stops_before_password_post(monkeypatch):
+    seen = []
+    def handler(request):
+        seen.append(request.method)
+        return httpx.Response(200, text=LOGIN + '<div data-sitekey="synthetic-key"></div>')
+    install_transport(monkeypatch, handler)
+    with pytest.raises(AuthenticationRequired, match="security challenge"):
+        auth.interactive_login("synthetic-user", "synthetic-password")
+    assert seen == ["GET"]

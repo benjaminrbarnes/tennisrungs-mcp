@@ -1,21 +1,17 @@
-import os
-from pathlib import Path
-
+"""Construct a reader without logging in or creating persistent state."""
 from .auth import Keychain
 from .client import Client
-from .journal import Journal
 from .transport import Transport
+from .models import AuthenticationRequired
 
 
-def operation_journal_path(state_dir=None):
-    folder = Path(state_dir) if state_dir else Path.home() / "Library/Application Support/tennisrungs-mcp"
-    return folder / "operations.sqlite3"
-
-
-def runtime(*, use_keychain=False, writes=False, state_dir=None):
-    # Read-only public runs do not create state or query Keychain.
-    cookies = Keychain().read() if use_keychain else None
-    journal = None
-    if writes:
-        journal = Journal(operation_journal_path(state_dir))
-    return Client(Transport(cookies), journal, writes_enabled=writes)
+def runtime(*, use_keychain=False, use_file_session=False):
+    if use_keychain and use_file_session:
+        raise AuthenticationRequired("Choose exactly one session backend")
+    if use_file_session:
+        from .file_sessions import FileTransport
+        transport = FileTransport()
+    else:
+        cookies = Keychain().read() if use_keychain else None
+        transport = Transport(cookies)
+    return Client(transport)

@@ -1,0 +1,26 @@
+name: Bug report
+description: Report a CLI, parser or MCP problem with sanitized evidence.
+body:
+  - type: markdown
+    attributes:
+      value: Do not include credentials, cookies, private account pages or personal match data. Use SECURITY.md for sensitive findings.
+  - type: input
+    id: version
+    attributes:
+      label: Package version, Python version and OS
+    validations:
+      required: true
+  - type: textarea
+    id: symptom
+    attributes:
+      label: What happened?
+      description: Include the command or MCP tool name, expected behavior and actual behavior. Remove private IDs and values.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction with synthetic data
+      description: Include the sanitized error category and any coverage warnings. Do not attach a real account HTML page.
+    validations:
+      required: true

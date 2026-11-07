@@ -166,18 +166,3 @@ def coverage(html, rows, label=None):
             complete = False
             warnings.append("Displayed count differs from parsed count")
     return complete, warnings
-
-
-def proposal_form(html):
-    s = soup(html)
-    form = s.find("form")
-    if not form:
-        raise UnsupportedContract("Proposal form not found")
-    names = {e.get("name") for e in form.select("input,select")}
-    required = {"TeamId", "Location", "MatchDate", "PreferredLocation", "Hour", "Minute", "AmOrPm", "ShowMyEmail"}
-    if not required <= names:
-        raise UnsupportedContract("Proposal form schema changed")
-    defaults = [(e["name"], e.get("value", "")) for e in form.select('input[type="hidden"][name]')]
-    options = {e.get("name"): {o.get("value", text(o)): text(o) for o in e.select("option")}
-               for e in form.select("select[name]")}
-    return defaults, options

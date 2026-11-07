@@ -1,3 +1,4 @@
+"""Local login and read-only TennisRungs commands."""
 import argparse
 import getpass
 import json
@@ -5,9 +6,8 @@ import sys
 import warnings
 
 from .auth import Keychain, interactive_login
-from .models import AuthenticationRequired, IntegrationError, ProposalInput, ScoreInput
+from .models import AuthenticationRequired, IntegrationError
 from .runtime import runtime
-from .runtime import operation_journal_path
 
 
 def prompt_credentials(site_label="TennisRungs"):
@@ -16,157 +16,68 @@ def prompt_credentials(site_label="TennisRungs"):
     username = input(f"{site_label} username: ")
     try:
         with warnings.catch_warnings():
-            # getpass otherwise falls back to echoing input. Never allow that.
             warnings.simplefilter("error", getpass.GetPassWarning)
-            password = getpass.getpass(f"{site_label} password (hidden; not stored): ")
+            password = getpass.getpass(f"{site_label} password: ")
     except (getpass.GetPassWarning, EOFError):
-        raise AuthenticationRequired("A secure non-echo terminal prompt is unavailable") from None
+        raise AuthenticationRequired("Secure non-echo credential prompt unavailable") from None
     return username, password
 
 
 def main(argv=None):
-    p = argparse.ArgumentParser(description="Direct HTTP TennisRungs. No browser automation.")
-    p.add_argument("--keychain", action="store_true", help="Read an explicitly approved local session")
-    p.add_argument("--enable-writes", action="store_true")
-    p.add_argument("--state-dir", help="Local journal directory; never inside version control")
-    sub = p.add_subparsers(dest="command", required=True)
+    parser = argparse.ArgumentParser(description="Local login and read-only TennisRungs CLI")
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("--keychain", action="store_true", help="Use a legacy macOS Keychain session")
+    group.add_argument("--file-session", action="store_true", help="Use the private session created by login")
+    sub = parser.add_subparsers(dest="command", required=True)
     for name in ["ladders", "matches", "own-proposals", "open-proposals"]:
         sub.add_parser(name)
-    for name, field in [("rankings", "ladder_id"), ("history", "team_id")]:
-        sub.add_parser(name).add_argument(field, type=int)
-    ip = sub.add_parser("iparcs", help="Atlanta court reads, offline plans and separately approved normal login")
-    ips = ip.add_subparsers(dest="ip_command", required=True)
-    ips.add_parser("search").add_argument("keyword")
-    ips.add_parser("detail").add_argument("resource_id", type=int)
-    av = ips.add_parser("availability")
-    av.add_argument("resource_id", type=int)
-    av.add_argument("start_date")
-    av.add_argument("end_date")
-    slot = ips.add_parser("check-slot")
-    slot.add_argument("resource_id", type=int)
-    slot.add_argument("day")
-    slot.add_argument("start_time")
-    slot.add_argument("end_time")
-    for name in ["prepare-plan", "compare-cart"]:
-        ips.add_parser(name).add_argument("--input", required=True, help="Local non-secret offline JSON")
-    ips.add_parser("auth-plan", help="Known source login contract and gaps only; no prompts, login or storage")
-    ips.add_parser("bootstrap", help="Public sign-in bootstrap diagnostics; no credential input or storage")
-    iplogin = ips.add_parser("login", help="One normal account login with same-session identity readback; no booking")
-    iplogin.add_argument("--approve-credential-transmission", action="store_true", required=True,
-                         help="Approve one credential POST to Atlanta's fixed HTTPS tenant")
-    iplogin.add_argument("--approve-session-storage", action="store_true",
-                         help="Separately approve storing the verified new session in macOS Keychain")
-    workflow = sub.add_parser("workflow", help="Offline planning only; no live adapters, jobs, texts or calendar changes")
-    workflows = workflow.add_subparsers(dest="workflow_command", required=True)
-    workflows.add_parser("plan").add_argument("--input", required=True)
-    rec = workflows.add_parser("reconcile")
-    rec.add_argument("--input", required=True)
-    rec.add_argument("--operation-key", required=True)
-    login = sub.add_parser("login", help="Interactive normal login; never reads browser credentials")
+    sub.add_parser("rankings").add_argument("ladder_id", type=int)
+    sub.add_parser("history").add_argument("team_id", type=int)
+    login = sub.add_parser("login", help="One normal login; the website password is not stored by default")
     login.add_argument("--approve-session-storage", action="store_true", required=True,
-                       help="Explicitly approve storing resulting site session in macOS Keychain")
-    for name in ["propose", "score"]:
-        cmd = sub.add_parser(name)
-        cmd.add_argument("--input", required=True, help="JSON file containing non-secret match/score fields")
-        cmd.add_argument("--operation-key", required=True)
-        cmd.add_argument("--confirm", action="store_true", required=True)
-    cmd = sub.add_parser("withdraw")
-    cmd.add_argument("challenge_id", type=int)
-    cmd.add_argument("--operation-key", required=True)
-    cmd.add_argument("--confirm", action="store_true", required=True)
-    cmd.add_argument("--human-confirmed-race-risk", action="store_true", required=True,
-                     help="Manual action only; acceptance may race with withdrawal")
-    cmd = sub.add_parser("accept")
-    for field in ["challenge_id", "ladder_id", "team_id"]:
-        cmd.add_argument(field, type=int)
-    cmd.add_argument("--operation-key", required=True)
-    cmd.add_argument("--confirm", action="store_true", required=True)
-    args = p.parse_args(argv)
+                       help="Allow storing the verified session in the private file or explicitly selected Keychain")
+    login.add_argument("--credential-provider", choices=["local-file"],
+                       help="Opt in to renewal using a previously configured password file, without prompt fallback")
+    credentials = sub.add_parser("credentials", help="Optional private password storage for unattended renewal")
+    bootstrap = credentials.add_subparsers(dest="credential_command", required=True).add_parser("bootstrap")
+    bootstrap.add_argument("--approve-plaintext-storage", action="store_true", required=True)
+    args = parser.parse_args(argv)
     client = None
     try:
-        if args.command == "workflow":
-            from .workflow_api import plan, reconcile_local
-            with open(args.input) as f:
-                data = json.load(f)
-            if not isinstance(data, dict) or set(data) != {"intent", "observation", "now"}:
-                raise IntegrationError("Expected intent, observation and now planning fields only")
-            if args.workflow_command == "plan":
-                result = plan(**data)
-            else:
-                result = reconcile_local(**data, journal_path=operation_journal_path(args.state_dir), operation_key=args.operation_key)
-            print(json.dumps(result, indent=2))
-            return 0
-        if args.command == "iparcs":
-            if args.ip_command in ["bootstrap", "login"]:
-                from .iparcs_login_bootstrap import acquire_anonymous_bootstrap
-                session = acquire_anonymous_bootstrap()
-                if args.ip_command == "bootstrap":
-                    print(json.dumps(session.diagnostics(), indent=2))
-                    return 0
-                if session.context.first_attempt_requires_recaptcha:
-                    raise AuthenticationRequired("Normal frontend requires CAPTCHA; stop before credential input")
-                from .iparcs_login import login_and_optionally_store, SERVICE, ACCOUNT
-                store = Keychain(service=SERVICE, account=ACCOUNT).store if args.approve_session_storage else None
-                username, password = prompt_credentials("Atlanta iParcs")
-                result = login_and_optionally_store(username, password,
-                    approval_reference="explicit local --approve-credential-transmission",
-                    approve_storage=args.approve_session_storage, session=session, store=store)
-                password = None
-                print(json.dumps(result, indent=2))
-                return 0
-            if args.ip_command == "auth-plan":
-                from .iparcs_auth_contract import auth_plan
-                print(json.dumps(auth_plan(), indent=2))
-                return 0
-            if args.ip_command in ["prepare-plan", "compare-cart"]:
-                from .iparcs_planning import preparation_plan, compare_cart
-                with open(args.input) as f:
-                    data = json.load(f)
-                result = preparation_plan(**data) if args.ip_command == "prepare-plan" else compare_cart(**data)
-                print(json.dumps(result, indent=2))
-                return 0
-            from .iparcs_reads import IParcsReads
-            iparcs = IParcsReads()
-            if args.ip_command == "search":
-                result = iparcs.search(args.keyword)
-            elif args.ip_command == "detail":
-                result = iparcs.detail(args.resource_id)
-            elif args.ip_command == "availability":
-                result = iparcs.availability(args.resource_id, args.start_date, args.end_date)
-            else:
-                result = iparcs.check_slot(args.resource_id, args.day, args.start_time, args.end_time)
-            print(json.dumps(result.to_dict(), indent=2))
+        if args.command == "credentials":
+            from .local_credentials import bootstrap
+            print(json.dumps(bootstrap(approve_plaintext_storage=args.approve_plaintext_storage), indent=2))
             return 0
         if args.command == "login":
+            if args.credential_provider:
+                if args.keychain:
+                    raise AuthenticationRequired("Local-file renewal cannot select Keychain")
+                from .local_credentials import renew
+                result = renew("tennisrungs", store_session=True)
+                print(json.dumps(result, indent=2))
+                return 0 if result["status"] == "OK" else 2
             username, password = prompt_credentials()
             cookies = interactive_login(username, password)
-            Keychain().store(cookies)
-            print(json.dumps({"session_stored": True, "storage": "macOS Keychain", "service": "tennisrungs-mcp.session.v1"}))
+            if args.keychain:
+                Keychain().store(cookies)
+            else:
+                from .file_sessions import FileSessionStore
+                FileSessionStore("tennisrungs").store(cookies)
+            print(json.dumps({"session_stored": True, "storage": "macOS Keychain" if args.keychain else "private-file"}))
             return 0
-        client = runtime(use_keychain=args.keychain, writes=args.enable_writes, state_dir=args.state_dir)
+        client = runtime(use_keychain=args.keychain, use_file_session=args.file_session)
         reads = {"ladders": client.list_current_ladders, "matches": client.list_own_matches,
                  "own-proposals": client.list_own_proposals, "open-proposals": client.list_open_proposals}
         if args.command in reads:
             result = reads[args.command]()
         elif args.command == "rankings":
             result = client.get_rankings(args.ladder_id)
-        elif args.command == "history":
+        else:
             result = client.get_player_history(args.team_id)
-        elif args.command in ["propose", "score"]:
-            with open(args.input) as f:
-                fields = json.load(f)
-            if args.command == "propose":
-                result = client.propose_match(ProposalInput(**fields), args.operation_key, confirmed=args.confirm)
-            else:
-                result = client.report_score(ScoreInput(**fields), args.operation_key, confirmed=args.confirm)
-        elif args.command == "withdraw":
-            result = client.withdraw_proposal(args.challenge_id, args.operation_key, confirmed=args.confirm, autonomous=False)
-        elif args.command == "accept":
-            result = client.accept_proposal(args.challenge_id, args.ladder_id, args.team_id, args.operation_key, confirmed=args.confirm)
         print(json.dumps(result.to_dict(), indent=2))
         return 0
-    except IntegrationError as e:
-        print(json.dumps({"error": type(e).__name__, "message": str(e)}), file=sys.stderr)
+    except IntegrationError as exc:
+        print(json.dumps({"error": type(exc).__name__, "message": str(exc)}), file=sys.stderr)
         return 2
     except (ValueError, TypeError, OSError):
         print(json.dumps({"error": "InvalidInput", "message": "Invalid local input; values suppressed"}), file=sys.stderr)
@@ -174,9 +85,7 @@ def main(argv=None):
     finally:
         if client:
             client.transport.close()
-            if client.journal:
-                client.journal.close()
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    main()

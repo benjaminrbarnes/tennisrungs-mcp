@@ -11,4 +11,8 @@ dist/
 *.har
 *.cookies
 session*.json
+*-session.json
+credentials.env
+credential-policy.json
+.renewal-*.lock
 local/
